@@ -38,7 +38,22 @@ data class AppStrings(
     val reminder: String,
     val report: String,
     val sms: String,
-    val entries: String
+    val entries: String,
+    val notifyWhatsApp: String,
+    val pendingStatus: String,
+    val partlyReceivedStatus: String,
+    val receivedStatus: String,
+    val markReceived: String,
+    val undoReceived: String,
+    val completedStatus: String,
+    val addToCashbook: String,
+    val fullStatement: String,
+    val pendingBillsOnly: String,
+    val thisMonth: String,
+    val last3Months: String,
+    val allTime: String,
+    val closingBalance: String,
+    val selectedBills: String
 )
 
 object Localization {
@@ -82,7 +97,22 @@ object Localization {
                 reminder = "Reminder",
                 report = "Report",
                 sms = "SMS",
-                entries = "ENTRIES"
+                entries = "ENTRIES",
+                notifyWhatsApp = "WhatsApp पर सूचित करें",
+                pendingStatus = "पेंडिंग",
+                partlyReceivedStatus = "आंशिक प्राप्त",
+                receivedStatus = "प्राप्त (Received)",
+                markReceived = "प्राप्त दर्ज करें",
+                undoReceived = "रसीद वापस लें",
+                completedStatus = "पूर्ण (Completed)",
+                addToCashbook = "कैशबुक में भी जोड़ें",
+                fullStatement = "पूरा स्टेटमेंट",
+                pendingBillsOnly = "केवल बाकी बिल",
+                thisMonth = "इस महीने",
+                last3Months = "पिछले 3 महीने",
+                allTime = "शुरू से अब तक",
+                closingBalance = "अंतिम शेष (Closing Balance)",
+                selectedBills = "चुने गए"
             )
             AppLanguage.GUJARATI -> AppStrings(
                 homeTitle = "ખાતા (Parties)",
@@ -122,7 +152,22 @@ object Localization {
                 reminder = "Reminder",
                 report = "Report",
                 sms = "SMS",
-                entries = "ENTRIES"
+                entries = "ENTRIES",
+                notifyWhatsApp = "WhatsApp પર મેસેજ મોકલો",
+                pendingStatus = "બાકી (Pending)",
+                partlyReceivedStatus = "અંશતઃ મળેલ",
+                receivedStatus = "મળી ગયેલ (Received)",
+                markReceived = "રૂપિયા મળ્યા દર્શાવો",
+                undoReceived = "રદ કરો",
+                completedStatus = "પૂર્ણ (Completed)",
+                addToCashbook = "રોજમેળમાં પણ ઉમેરો",
+                fullStatement = "સંપૂર્ણ સ્ટેટમેન્ટ",
+                pendingBillsOnly = "માત્ર બાકી બિલ",
+                thisMonth = "આ મહિને",
+                last3Months = "છેલ્લા 3 મહિના",
+                allTime = "બધા સમયનું",
+                closingBalance = "આખર બાકી (Closing Balance)",
+                selectedBills = "પસંદ કરેલ"
             )
             AppLanguage.HINGLISH -> AppStrings(
                 homeTitle = "Parties",
@@ -162,7 +207,22 @@ object Localization {
                 reminder = "Reminder",
                 report = "Report",
                 sms = "SMS",
-                entries = "ENTRIES"
+                entries = "ENTRIES",
+                notifyWhatsApp = "Notify on WhatsApp",
+                pendingStatus = "Pending",
+                partlyReceivedStatus = "Partly received",
+                receivedStatus = "Received",
+                markReceived = "Mark received",
+                undoReceived = "Undo received",
+                completedStatus = "Completed",
+                addToCashbook = "Also add to cashbook",
+                fullStatement = "Full statement",
+                pendingBillsOnly = "Pending bills only",
+                thisMonth = "This month",
+                last3Months = "Last 3 months",
+                allTime = "All time",
+                closingBalance = "Closing Balance",
+                selectedBills = "Selected"
             )
             AppLanguage.MARATHI -> AppStrings(
                 homeTitle = "Parties",
@@ -202,7 +262,22 @@ object Localization {
                 reminder = "Reminder",
                 report = "Report",
                 sms = "SMS",
-                entries = "ENTRIES"
+                entries = "ENTRIES",
+                notifyWhatsApp = "WhatsApp वर पाठवा",
+                pendingStatus = "प्रलंबित (Pending)",
+                partlyReceivedStatus = "अंशतः प्राप्त",
+                receivedStatus = "प्राप्त (Received)",
+                markReceived = "रक्कम नोंदवा",
+                undoReceived = "मागे घ्या",
+                completedStatus = "पूर्ण (Completed)",
+                addToCashbook = "कॅशबुकमध्ये पण नोंदवा",
+                fullStatement = "संपूर्ण स्टेटमेंट",
+                pendingBillsOnly = "फक्त बाकी बिले",
+                thisMonth = "या महिन्यात",
+                last3Months = "मागील 3 महिने",
+                allTime = "सुरुवातीपासून",
+                closingBalance = "अंतिम शिल्लक (Closing Balance)",
+                selectedBills = "निवडलेले"
             )
             else -> AppStrings(
                 homeTitle = "Parties",
@@ -242,7 +317,22 @@ object Localization {
                 reminder = "Reminder",
                 report = "Report",
                 sms = "SMS",
-                entries = "ENTRIES"
+                entries = "ENTRIES",
+                notifyWhatsApp = "Notify on WhatsApp",
+                pendingStatus = "Pending",
+                partlyReceivedStatus = "Partly received",
+                receivedStatus = "Received",
+                markReceived = "Mark received",
+                undoReceived = "Undo received",
+                completedStatus = "Completed",
+                addToCashbook = "Also add to cashbook",
+                fullStatement = "Full statement",
+                pendingBillsOnly = "Pending bills only",
+                thisMonth = "This month",
+                last3Months = "Last 3 months",
+                allTime = "All time",
+                closingBalance = "Closing Balance",
+                selectedBills = "Selected"
             )
         }
     }

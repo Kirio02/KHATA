@@ -3,12 +3,10 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,16 +15,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.Button
@@ -34,7 +31,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,12 +61,14 @@ import com.example.data.repository.computeRunningBalances
 import com.example.ui.components.TransactionItem
 import com.example.ui.dialogs.AddTransactionDialog
 import com.example.ui.dialogs.EditTransactionDialog
+import com.example.ui.dialogs.MarkReceivedDialog
+import com.example.ui.dialogs.StatementShareDialog
 import com.example.ui.theme.CreditRed
 import com.example.ui.theme.DebitGreen
 import com.example.ui.theme.PrimaryNavy
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
-import com.example.util.MonthlyReportPdfGenerator
+import com.example.util.Localization
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.abs
@@ -87,25 +85,52 @@ fun PartyDetailScreen(
         type: TransactionType,
         paymentMode: PaymentMode,
         description: String,
-        billNumber: String
+        billNumber: String,
+        addToCashbook: Boolean
     ) -> Unit,
-    onToggleGaveTick: (TransactionEntry) -> Unit,
-    onToggleTakenTick: (TransactionEntry) -> Unit,
+    onMarkReceived: ((bill: TransactionEntry, amount: Double, paymentMode: PaymentMode, timestamp: Long, addToCashbook: Boolean) -> Unit)? = null,
+    onUndoReceived: ((bill: TransactionEntry) -> Unit)? = null,
+    onMultiBillReceived: ((billIds: List<Long>, paymentMode: PaymentMode, addToCashbook: Boolean) -> Unit)? = null,
     onToggleCompleted: ((TransactionEntry) -> Unit)? = null,
     onEditTransaction: ((TransactionEntry, Double, String, Long, PaymentMode, TransactionType, String) -> Unit)? = null,
     onDeleteTransaction: (TransactionEntry) -> Unit,
     onDeleteParty: (Party) -> Unit,
     onSendReminder: (Party) -> Unit
 ) {
-    BackHandler(onBack = onBack)
-
     val context = LocalContext.current
+    val strings = remember(profile.languageCode) { Localization.getStrings(profile.languageCode) }
     val currency = profile.currencySymbol.ifBlank { "₹" }
-    val fmt = NumberFormat.getNumberInstance(Locale.Builder().setLanguage("en").setRegion("IN").build()).apply { maximumFractionDigits = 0 }
+    val fmt = NumberFormat.getNumberInstance(Locale.Builder().setLanguage("en").setRegion("IN").build()).apply {
+        maximumFractionDigits = 0
+    }
 
     var showTxDialogType by remember { mutableStateOf<TransactionType?>(null) }
     var editingEntry by remember { mutableStateOf<TransactionEntry?>(null) }
+    var billToMarkReceived by remember { mutableStateOf<TransactionEntry?>(null) }
+    var showStatementDialog by remember { mutableStateOf(false) }
+
+    // Multi-select state
+    var selectedBillIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    val isSelectionMode = selectedBillIds.isNotEmpty()
+
+    BackHandler(enabled = isSelectionMode) {
+        selectedBillIds = emptySet()
+    }
+    BackHandler(enabled = !isSelectionMode, onBack = onBack)
+
     val runningBalances = remember(transactions) { computeRunningBalances(transactions) }
+
+    // Calculate total paid amounts per bill
+    val billPaidAmounts = remember(transactions) {
+        val map = mutableMapOf<Long, Double>()
+        for (tx in transactions) {
+            if (tx.type == TransactionType.YOU_GOT && tx.linkedToEntryId != null) {
+                val curr = map[tx.linkedToEntryId] ?: 0.0
+                map[tx.linkedToEntryId] = curr + tx.amount
+            }
+        }
+        map
+    }
 
     val isReceivable = party.balance > 0.0
     val isPayable = party.balance < 0.0
@@ -119,124 +144,159 @@ fun PartyDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFEDE7F6),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = initials,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF4527A0)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = party.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "View settings",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFBBDEFB)
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag("party_detail_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedBillIds.size} ${strings.selectedBills}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
-                    }
-                },
-                actions = {
-                    if (party.phone.isNotBlank()) {
-                        IconButton(
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedBillIds = emptySet() }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        }
+                    },
+                    actions = {
+                        Button(
                             onClick = {
-                                val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${party.phone}"))
-                                runCatching { context.startActivity(dial) }
-                            }
+                                onMultiBillReceived?.invoke(selectedBillIds.toList(), PaymentMode.CASH, true)
+                                selectedBillIds = emptySet()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = DebitGreen),
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .testTag("mark_all_selected_received_button")
                         ) {
+                            Text(
+                                text = "Mark received (${selectedBillIds.size})",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = PrimaryNavy)
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFEDE7F6),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = initials,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF4527A0)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = party.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                if (party.phone.isNotBlank()) {
+                                    Text(
+                                        text = party.phone,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFFBBDEFB)
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
                             Icon(
-                                imageVector = Icons.Default.Call,
-                                contentDescription = "Call Party",
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
                                 tint = Color.White
                             )
                         }
-                    }
-                    IconButton(onClick = { onDeleteParty(party) }) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Party",
-                            tint = Color(0xFFFFCDD2)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = PrimaryNavy
+                    },
+                    actions = {
+                        if (party.phone.isNotBlank()) {
+                            IconButton(
+                                onClick = {
+                                    val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${party.phone}"))
+                                    runCatching { context.startActivity(dial) }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Call,
+                                    contentDescription = "Call Party",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                        IconButton(onClick = { onDeleteParty(party) }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Party",
+                                tint = Color(0xFFFFCDD2)
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = PrimaryNavy)
                 )
-            )
+            }
         },
         bottomBar = {
-            // Big High-Contrast Touch Targets: YOU GAVE ₹ (Red) | YOU GOT ₹ (Green)
-            Surface(
-                tonalElevation = 8.dp,
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+            if (!isSelectionMode) {
+                Surface(
+                    tonalElevation = 8.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.surface
                 ) {
-                    Button(
-                        onClick = { showTxDialogType = TransactionType.YOU_GAVE },
-                        colors = ButtonDefaults.buttonColors(containerColor = CreditRed),
-                        shape = RoundedCornerShape(8.dp),
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .testTag("you_gave_button")
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "YOU GAVE $currency",
-                            fontWeight = FontWeight.ExtraBold,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
-                        )
-                    }
+                        Button(
+                            onClick = { showTxDialogType = TransactionType.YOU_GAVE },
+                            colors = ButtonDefaults.buttonColors(containerColor = CreditRed),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("you_gave_button")
+                        ) {
+                            Text(
+                                text = "YOU GAVE $currency",
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White
+                            )
+                        }
 
-                    Button(
-                        onClick = { showTxDialogType = TransactionType.YOU_GOT },
-                        colors = ButtonDefaults.buttonColors(containerColor = DebitGreen),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .testTag("you_got_button")
-                    ) {
-                        Text(
-                            text = "YOU GOT $currency",
-                            fontWeight = FontWeight.ExtraBold,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
-                        )
+                        Button(
+                            onClick = { showTxDialogType = TransactionType.YOU_GOT },
+                            colors = ButtonDefaults.buttonColors(containerColor = DebitGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("you_got_button")
+                        ) {
+                            Text(
+                                text = "YOU GOT $currency",
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
@@ -251,192 +311,139 @@ fun PartyDetailScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .widthIn(max = 600.dp),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                    .padding(bottom = if (isSelectionMode) 0.dp else 4.dp)
             ) {
-                // Top Banner with Blue Background (Exact match to Photo 2)
+                // Header Balance Card & Quick Action Icons
                 item {
-                    Box(
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(PrimaryNavy)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .padding(14.dp)
                     ) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF6)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column {
-                                // Balance Row
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
                                     Text(
                                         text = when {
-                                            isReceivable -> "You will get"
-                                            isPayable -> "You will give"
-                                            else -> "Settled"
+                                            isReceivable -> strings.youWillGet
+                                            isPayable -> strings.youWillGive
+                                            else -> strings.settled
                                         },
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TextPrimary
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when {
+                                            isReceivable -> DebitGreen
+                                            isPayable -> CreditRed
+                                            else -> TextSecondary
+                                        }
                                     )
                                     Text(
                                         text = "$currency ${fmt.format(abs(party.balance))}",
-                                        style = MaterialTheme.typography.headlineSmall,
+                                        style = MaterialTheme.typography.headlineMedium,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = if (isReceivable) CreditRed else if (isPayable) DebitGreen else TextPrimary
+                                        color = when {
+                                            isReceivable -> DebitGreen
+                                            isPayable -> CreditRed
+                                            else -> TextPrimary
+                                        }
                                     )
                                 }
+                            }
 
-                                HorizontalDivider(color = Color(0xFFD6DBE5))
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                                // Set collection reminder banner
-                                Row(
+                            // 3 Iconic Action Buttons: Report (PDF/WhatsApp) | Reminder | SMS
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                // Statement / Report Button
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onSendReminder(party) }
-                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { showStatementDialog = true }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .testTag("party_report_button")
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.CalendarMonth,
-                                            contentDescription = "Calendar",
-                                            tint = PrimaryNavy,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Set collection reminder",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Medium,
-                                            color = TextPrimary
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.PictureAsPdf,
+                                        contentDescription = "Report",
+                                        tint = PrimaryNavy,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "SET DATE",
+                                        text = "Statement",
                                         style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = PrimaryNavy
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary
                                     )
                                 }
-                            }
-                        }
-                    }
-                }
 
-                // 3 Quick Action Buttons: Report | Reminder | SMS (Exact match to Photo 2)
-                item {
-                    Surface(
-                        color = Color.White,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp, horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Report Button
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        val pdf = MonthlyReportPdfGenerator.generateMonthlyReportPdf(
-                                            context = context,
-                                            profile = profile,
-                                            parties = listOf(party),
-                                            transactions = transactions,
-                                            periodLabel = "Statement - ${party.name}"
-                                        )
-                                        if (pdf != null) {
-                                            MonthlyReportPdfGenerator.sharePdfFile(
-                                                context,
-                                                pdf,
-                                                "Statement - ${party.name}"
-                                            )
+                                // Reminder (WhatsApp direct chat) Button
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onSendReminder(party) }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .testTag("party_reminder_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Chat,
+                                        contentDescription = "Reminder",
+                                        tint = Color(0xFF25D366),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Reminder",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary
+                                    )
+                                }
+
+                                // SMS Button
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            val smsUri = Uri.parse("smsto:${party.phone}")
+                                            val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
+                                                putExtra(
+                                                    "sms_body",
+                                                    "Dear ${party.name}, an amount of $currency${fmt.format(abs(party.balance))} is due at ${profile.businessName}. Please clear at earliest."
+                                                )
+                                            }
+                                            runCatching { context.startActivity(smsIntent) }
                                         }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PictureAsPdf,
-                                    contentDescription = "Report",
-                                    tint = PrimaryNavy,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Report",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                            }
-
-                            // Reminder (WhatsApp) Button
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onSendReminder(party) }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Chat,
-                                    contentDescription = "Reminder",
-                                    tint = Color(0xFF25D366),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Reminder",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                            }
-
-                            // SMS Button
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        val smsUri = Uri.parse("smsto:${party.phone}")
-                                        val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
-                                            putExtra(
-                                                "sms_body",
-                                                "Dear ${party.name}, an amount of $currency${fmt.format(abs(party.balance))} is due at ${profile.businessName}. Please clear at earliest."
-                                            )
-                                        }
-                                        runCatching { context.startActivity(smsIntent) }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Call,
-                                    contentDescription = "SMS",
-                                    tint = PrimaryNavy,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "SMS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .testTag("party_sms_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Call,
+                                        contentDescription = "SMS",
+                                        tint = PrimaryNavy,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "SMS",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary
+                                    )
+                                }
                             }
                         }
                     }
@@ -456,7 +463,7 @@ fun PartyDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "ENTRIES",
+                                text = "ENTRIES (Long-press to select)",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = TextSecondary,
@@ -496,14 +503,34 @@ fun PartyDetailScreen(
                         }
                     }
                 } else {
-                    items(transactions, key = { it.id }) { entry ->
+                    // Ledger browser: displays newest first
+                    val displayEntries = transactions.sortedWith(compareByDescending<TransactionEntry> { it.timestamp }.thenByDescending { it.id })
+
+                    items(displayEntries, key = { it.id }) { entry ->
+                        val paidAgainstThis = billPaidAmounts[entry.id] ?: 0.0
+
                         TransactionItem(
                             entry = entry,
                             currencySymbol = currency,
                             showPartyName = false,
                             runningBalance = runningBalances[entry.id],
-                            onToggleGaveTick = { onToggleGaveTick(entry) },
-                            onToggleTakenTick = { onToggleTakenTick(entry) },
+                            totalPaidAgainstBill = paidAgainstThis,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedBillIds.contains(entry.id),
+                            onToggleSelect = {
+                                selectedBillIds = if (selectedBillIds.contains(entry.id)) {
+                                    selectedBillIds - entry.id
+                                } else {
+                                    selectedBillIds + entry.id
+                                }
+                            },
+                            onLongPressBill = {
+                                if (entry.type == TransactionType.YOU_GAVE) {
+                                    selectedBillIds = selectedBillIds + entry.id
+                                }
+                            },
+                            onMarkReceivedClick = { billToMarkReceived = entry },
+                            onUndoReceivedClick = { onUndoReceived?.invoke(entry) },
                             onToggleCompleted = { onToggleCompleted?.invoke(entry) },
                             onEditClick = { editingEntry = entry },
                             onDeleteClick = { onDeleteTransaction(entry) },
@@ -515,29 +542,57 @@ fun PartyDetailScreen(
         }
     }
 
+    // Add Transaction Dialog
     if (showTxDialogType != null) {
         AddTransactionDialog(
             partyName = party.name,
             initialType = showTxDialogType!!,
             currencySymbol = currency,
             onDismiss = { showTxDialogType = null },
-            onSave = { amt, type, mode, desc, bill ->
-                onAddTransaction(amt, type, mode, desc, bill)
+            onSave = { amt, type, mode, desc, bill, addToCashbook ->
+                onAddTransaction(amt, type, mode, desc, bill, addToCashbook)
                 showTxDialogType = null
             }
         )
     }
 
+    // Edit Transaction Dialog
     if (editingEntry != null) {
         EditTransactionDialog(
             entry = editingEntry!!,
             currencySymbol = currency,
-            languageCode = profile.languageCode,
             onDismiss = { editingEntry = null },
-            onSave = { amt, desc, time, mode, type, bill ->
-                onEditTransaction?.invoke(editingEntry!!, amt, desc, time, mode, type, bill)
+            onSave = { updatedEntry, amt, desc, time, mode, type, bill ->
+                onEditTransaction?.invoke(updatedEntry, amt, desc, time, mode, type, bill)
                 editingEntry = null
             }
+        )
+    }
+
+    // Mark Received Dialog
+    if (billToMarkReceived != null) {
+        val totalPaid = billPaidAmounts[billToMarkReceived!!.id] ?: 0.0
+        val outstanding = (billToMarkReceived!!.amount - totalPaid).coerceAtLeast(0.0)
+
+        MarkReceivedDialog(
+            bill = billToMarkReceived!!,
+            outstandingAmount = outstanding,
+            currencySymbol = currency,
+            onDismiss = { billToMarkReceived = null },
+            onConfirm = { amt, mode, time, addToCashbook ->
+                onMarkReceived?.invoke(billToMarkReceived!!, amt, mode, time, addToCashbook)
+                billToMarkReceived = null
+            }
+        )
+    }
+
+    // Statement Share Dialog (Full / Pending bills + Date range)
+    if (showStatementDialog) {
+        StatementShareDialog(
+            party = party,
+            profile = profile,
+            allTransactions = transactions,
+            onDismiss = { showStatementDialog = false }
         )
     }
 }

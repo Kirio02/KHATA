@@ -144,10 +144,11 @@ class KhataRepository(
         itemsSummary: String = "",
         timestamp: Long = System.currentTimeMillis(),
         linkedToEntryId: Long? = null,
-        isCompleted: Boolean = false
-    ) {
-        val party = partyDao.getPartyByIdOnce(partyId) ?: return
-        transactionDao.insertTransaction(
+        isCompleted: Boolean = false,
+        addToCashbook: Boolean = false
+    ): Long {
+        val party = partyDao.getPartyByIdOnce(partyId) ?: return 0L
+        val txId = transactionDao.insertTransaction(
             TransactionEntry(
                 partyId = partyId,
                 partyNameSnapshot = party.name,
@@ -162,7 +163,100 @@ class KhataRepository(
                 isCompleted = isCompleted
             )
         )
+        if (paymentMode == PaymentMode.CASH && addToCashbook) {
+            val isCashIn = (type == TransactionType.YOU_GOT)
+            val cashTx = TransactionEntry(
+                partyId = null,
+                partyNameSnapshot = party.name,
+                amount = amount,
+                type = if (isCashIn) TransactionType.CASH_IN else TransactionType.CASH_OUT,
+                paymentMode = PaymentMode.CASH,
+                description = "${party.name} (${if (isCashIn) "Payment received" else "Payment given"})",
+                billNumber = billNumber.trim(),
+                timestamp = timestamp,
+                linkedToEntryId = txId
+            )
+            transactionDao.insertTransaction(cashTx)
+        }
         recalculatePartyBalance(partyId)
+        return txId
+    }
+
+    suspend fun recordReceivedPayment(
+        billId: Long,
+        amount: Double,
+        paymentMode: PaymentMode = PaymentMode.CASH,
+        timestamp: Long = System.currentTimeMillis(),
+        addToCashbook: Boolean = true
+    ): Long {
+        val bill = transactionDao.getTransactionById(billId) ?: return 0L
+        val partyId = bill.partyId ?: return 0L
+        val party = partyDao.getPartyByIdOnce(partyId) ?: return 0L
+
+        val paymentTx = TransactionEntry(
+            partyId = partyId,
+            partyNameSnapshot = party.name,
+            amount = amount,
+            type = TransactionType.YOU_GOT,
+            paymentMode = paymentMode,
+            description = "Received for Bill #${bill.billNumber.ifBlank { bill.id.toString() }}",
+            billNumber = bill.billNumber,
+            timestamp = timestamp,
+            linkedToEntryId = bill.id
+        )
+        val paymentId = transactionDao.insertTransaction(paymentTx)
+
+        if (paymentMode == PaymentMode.CASH && addToCashbook) {
+            val cashTx = TransactionEntry(
+                partyId = null,
+                partyNameSnapshot = party.name,
+                amount = amount,
+                type = TransactionType.CASH_IN,
+                paymentMode = PaymentMode.CASH,
+                description = "${party.name} (Bill #${bill.billNumber.ifBlank { bill.id.toString() }} payment)",
+                billNumber = bill.billNumber,
+                timestamp = timestamp,
+                linkedToEntryId = paymentId
+            )
+            transactionDao.insertTransaction(cashTx)
+        }
+
+        recalculatePartyBalance(partyId)
+        return paymentId
+    }
+
+    suspend fun undoReceivedPayment(billId: Long) {
+        val bill = transactionDao.getTransactionById(billId) ?: return
+        val partyId = bill.partyId ?: return
+        val linkedPayments = transactionDao.getLinkedTransactions(billId)
+        for (payment in linkedPayments) {
+            transactionDao.deleteLinkedTransactions(payment.id)
+            transactionDao.deleteTransaction(payment)
+        }
+        recalculatePartyBalance(partyId)
+    }
+
+    suspend fun recordMultiBillPayment(
+        billIds: List<Long>,
+        paymentMode: PaymentMode = PaymentMode.CASH,
+        timestamp: Long = System.currentTimeMillis(),
+        addToCashbook: Boolean = true
+    ) {
+        for (billId in billIds) {
+            val bill = transactionDao.getTransactionById(billId) ?: continue
+            val linkedPayments = transactionDao.getLinkedTransactions(billId)
+            val alreadyPaid = linkedPayments.filter { it.type == TransactionType.YOU_GOT }.sumOf { it.amount }
+            val outstanding = (bill.amount - alreadyPaid).coerceAtLeast(0.0)
+            if (outstanding > 0.0) {
+                recordReceivedPayment(
+                    billId = billId,
+                    amount = outstanding,
+                    paymentMode = paymentMode,
+                    timestamp = timestamp,
+                    addToCashbook = addToCashbook
+                )
+            }
+        }
     }
 
     suspend fun addCashbookEntry(
@@ -194,6 +288,12 @@ class KhataRepository(
     }
 
     suspend fun deleteTransaction(entry: TransactionEntry) {
+        transactionDao.deleteLinkedTransactions(entry.id)
+        val linked = transactionDao.getLinkedTransactions(entry.id)
+        for (item in linked) {
+            transactionDao.deleteLinkedTransactions(item.id)
+            transactionDao.deleteTransaction(item)
+        }
         transactionDao.deleteTransaction(entry)
         entry.partyId?.let { recalculatePartyBalance(it) }
     }

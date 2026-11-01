@@ -29,6 +29,15 @@ interface TransactionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(entry: TransactionEntry): Long
 
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getTransactionById(id: Long): TransactionEntry?
+
+    @Query("SELECT * FROM transactions WHERE linkedToEntryId = :linkedId ORDER BY timestamp ASC")
+    suspend fun getLinkedTransactions(linkedId: Long): List<TransactionEntry>
+
+    @Query("DELETE FROM transactions WHERE linkedToEntryId = :linkedId")
+    suspend fun deleteLinkedTransactions(linkedId: Long)
+
     @Update
     suspend fun updateTransaction(entry: TransactionEntry)
 

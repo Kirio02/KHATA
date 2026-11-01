@@ -60,7 +60,27 @@ class ExampleUnitTest {
     assertFalse(BiometricAuthManager.isLegacyPlainPin(hashed))
     assertTrue(BiometricAuthManager.verifyPin("4321", "4321"))
   }
+
+  @Test
+  fun testPhoneUtil_normalizationAndFormatting() {
+    // 10 digits adds 91 prefix
+    assertEquals("919876543210", com.example.util.PhoneUtil.normalize("9876543210"))
+    assertEquals("919876543210", com.example.util.PhoneUtil.toWhatsAppNumber("9876543210"))
+    assertEquals("+91 98765 43210", com.example.util.PhoneUtil.toDisplay("9876543210"))
+
+    // Strip leading 0
+    assertEquals("919876543210", com.example.util.PhoneUtil.normalize("09876543210"))
+
+    // Existing country code
+    assertEquals("919876543210", com.example.util.PhoneUtil.normalize("+91 98765 43210"))
+    assertEquals("+91 98765 43210", com.example.util.PhoneUtil.toDisplay("+91 98765 43210"))
+
+    // Other country code
+    assertEquals("15551234567", com.example.util.PhoneUtil.normalize("+1 555 123 4567"))
+    assertEquals("+15551234567", com.example.util.PhoneUtil.toDisplay("+1 555 123 4567"))
+  }
 }
+
 
 
 

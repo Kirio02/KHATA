@@ -125,17 +125,24 @@ fun ReminderDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, reminderMessage)
+                    val waNumber = com.example.util.PhoneUtil.toWhatsAppNumber(party.phone)
+                    val encoded = java.net.URLEncoder.encode(reminderMessage, "UTF-8")
+                    val waUri = Uri.parse("https://wa.me/$waNumber?text=$encoded")
+                    val waIntent = Intent(Intent.ACTION_VIEW, waUri)
+                    try {
+                        context.startActivity(waIntent)
+                    } catch (e: Exception) {
+                        val smsIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:${party.phone}")).apply {
+                            putExtra("sms_body", reminderMessage)
+                        }
+                        runCatching { context.startActivity(smsIntent) }
                     }
-                    context.startActivity(Intent.createChooser(shareIntent, "Send WhatsApp Reminder"))
                     onDismiss()
                 }
             ) {
                 Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "WhatsApp")
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Share on WhatsApp")
+                Text("Send via WhatsApp")
             }
         },
         dismissButton = {

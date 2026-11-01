@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -12,6 +14,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -19,7 +22,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -41,7 +46,8 @@ fun AddTransactionDialog(
         type: TransactionType,
         paymentMode: PaymentMode,
         description: String,
-        billNumber: String
+        billNumber: String,
+        addToCashbook: Boolean
     ) -> Unit
 ) {
     var amountText by remember { mutableStateOf("") }
@@ -49,6 +55,7 @@ fun AddTransactionDialog(
     var paymentMode by remember { mutableStateOf(PaymentMode.CASH) }
     var description by remember { mutableStateOf("") }
     var billNumber by remember { mutableStateOf("") }
+    var addToCashbook by remember { mutableStateOf(true) }
     var amountError by remember { mutableStateOf(false) }
 
     val isYouGave = txType == TransactionType.YOU_GAVE
@@ -127,6 +134,33 @@ fun AddTransactionDialog(
                         )
                     }
                 }
+
+                if (paymentMode == PaymentMode.CASH) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Also add to cashbook",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (!isYouGave) "Creates Cash In record with party name" else "Creates Cash Out record with party name",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
+                        Switch(
+                            checked = addToCashbook,
+                            onCheckedChange = { addToCashbook = it }
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -142,7 +176,8 @@ fun AddTransactionDialog(
                         txType,
                         paymentMode,
                         description.ifBlank { if (isYouGave) "Credit Entry" else "Payment Received" },
-                        billNumber
+                        billNumber,
+                        addToCashbook && (paymentMode == PaymentMode.CASH)
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),

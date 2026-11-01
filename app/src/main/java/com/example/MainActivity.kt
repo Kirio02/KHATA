@@ -220,18 +220,32 @@ fun KirioMainApp(viewModel: KhataViewModel = viewModel()) {
             transactions = partyTxs,
             profile = profile,
             onBack = { selectedPartyId = null },
-            onAddTransaction = { amt, type, mode, desc, bill ->
+            onAddTransaction = { amt, type, mode, desc, bill, addToCashbook ->
                 viewModel.addPartyTransaction(
                     partyId = activeParty.id,
                     amount = amt,
                     type = type,
                     paymentMode = mode,
                     description = desc,
-                    billNumber = bill
+                    billNumber = bill,
+                    addToCashbook = addToCashbook
                 )
             },
-            onToggleGaveTick = { tx -> viewModel.toggleConfirmGave(tx) },
-            onToggleTakenTick = { tx -> viewModel.toggleConfirmTaken(tx) },
+            onMarkReceived = { bill, amt, mode, time, addToCashbook ->
+                viewModel.recordReceivedPayment(
+                    billId = bill.id,
+                    amount = amt,
+                    paymentMode = mode,
+                    timestamp = time,
+                    addToCashbook = addToCashbook
+                )
+            },
+            onUndoReceived = { bill ->
+                viewModel.undoReceivedPayment(bill.id)
+            },
+            onMultiBillReceived = { billIds, mode, addToCashbook ->
+                viewModel.recordMultiBillPayment(billIds, mode, addToCashbook)
+            },
             onToggleCompleted = { tx -> viewModel.toggleCompleted(tx) },
             onEditTransaction = { tx, amt, desc, time, mode, type, bill ->
                 viewModel.updateTransactionEntry(tx, amt, desc, time, mode, type, bill)
@@ -437,6 +451,7 @@ fun KirioMainApp(viewModel: KhataViewModel = viewModel()) {
     if (showAddPartyDialogType != null) {
         AddPartyDialog(
             initialType = showAddPartyDialogType!!,
+            profile = profile,
             onDismiss = { showAddPartyDialogType = null },
             onSave = { name, phone, type, addr, gst, notes, openBal, isGave ->
                 viewModel.addParty(name, phone, type, addr, gst, notes, openBal, isGave) {

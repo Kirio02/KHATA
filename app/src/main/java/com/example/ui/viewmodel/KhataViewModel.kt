@@ -196,7 +196,8 @@ class KhataViewModel(application: Application) : AndroidViewModel(application) {
         paymentMode: PaymentMode,
         description: String,
         billNumber: String = "",
-        itemsSummary: String = ""
+        itemsSummary: String = "",
+        addToCashbook: Boolean = false
     ) {
         viewModelScope.launch {
             repository.addPartyTransaction(
@@ -206,7 +207,46 @@ class KhataViewModel(application: Application) : AndroidViewModel(application) {
                 paymentMode = paymentMode,
                 description = description,
                 billNumber = billNumber,
-                itemsSummary = itemsSummary
+                itemsSummary = itemsSummary,
+                addToCashbook = addToCashbook
+            )
+        }
+    }
+
+    fun recordReceivedPayment(
+        billId: Long,
+        amount: Double,
+        paymentMode: PaymentMode = PaymentMode.CASH,
+        timestamp: Long = System.currentTimeMillis(),
+        addToCashbook: Boolean = true
+    ) {
+        viewModelScope.launch {
+            repository.recordReceivedPayment(
+                billId = billId,
+                amount = amount,
+                paymentMode = paymentMode,
+                timestamp = timestamp,
+                addToCashbook = addToCashbook
+            )
+        }
+    }
+
+    fun undoReceivedPayment(billId: Long) {
+        viewModelScope.launch {
+            repository.undoReceivedPayment(billId)
+        }
+    }
+
+    fun recordMultiBillPayment(
+        billIds: List<Long>,
+        paymentMode: PaymentMode = PaymentMode.CASH,
+        addToCashbook: Boolean = true
+    ) {
+        viewModelScope.launch {
+            repository.recordMultiBillPayment(
+                billIds = billIds,
+                paymentMode = paymentMode,
+                addToCashbook = addToCashbook
             )
         }
     }
