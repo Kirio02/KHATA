@@ -1,0 +1,6 @@
+{
+  "name": "Kirio",
+  "description": "Smart Digital Ledger & Khata Book with Cashbook, AI Assistant, PDF Reports, QR Standee, and Cloud Backup",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

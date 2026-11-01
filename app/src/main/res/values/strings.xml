@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Kirio</string>
+    <string name="search_parties">Search customers or suppliers…</string>
+    <string name="you_will_give">You Will Give</string>
+    <string name="you_will_get">You Will Get</string>
+    <string name="net_balance">Net Balance</string>
+    <string name="add_party">Add Party</string>
+    <string name="cash_in">Cash In</string>
+    <string name="cash_out">Cash Out</string>
+    <string name="you_gave">You Gave (₹)</string>
+    <string name="you_got">You Got (₹)</string>
+</resources>

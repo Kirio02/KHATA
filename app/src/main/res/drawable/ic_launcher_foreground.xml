@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Ledger Book Silhouette -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,26C30.69,26 28,28.69 28,32V76C28,79.31 30.69,82 34,82H74C77.31,82 80,79.31 80,76V32C80,28.69 77.31,26 74,26H34ZM38,34H70V42H38V34ZM38,48H58V54H38V48ZM38,60H52V66H38V60Z" />
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M66,52C60.48,52 56,56.48 56,62C56,67.52 60.48,72 66,72C71.52,72 76,67.52 76,62C76,56.48 71.52,52 66,52ZM69,60H65V61H68C68.55,61 69,61.45 69,62V65C69,65.55 68.55,66 68,66H67V67H65V66H63V64H67V63H64C63.45,63 63,62.55 63,62V59C63,58.45 63.45,58 64,58H65V57H67V58H69V60Z" />
+</vector>
