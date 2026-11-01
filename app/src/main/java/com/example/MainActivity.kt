@@ -1,10 +1,13 @@
 package com.example
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -72,7 +75,7 @@ enum class KirioTab {
     MORE      // Matches "More" tab in user photo
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -122,14 +125,61 @@ fun KirioMainApp(viewModel: KhataViewModel = viewModel()) {
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    val exportFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val json = viewModel.getBackupJsonString()
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    os.write(json.toByteArray(Charsets.UTF_8))
+                }
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Backup file saved successfully!")
+                }
+            }.onFailure { err ->
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Failed to export backup: ${err.localizedMessage}")
+                }
+            }
+        }
+    }
+
+    val importFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val json = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader().readText()
+                }
+                if (!json.isNullOrBlank()) {
+                    viewModel.restoreFromBackupJsonString(json) { _, msg ->
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(msg)
+                        }
+                    }
+                }
+            }.onFailure { err ->
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Failed to read backup file: ${err.localizedMessage}")
+                }
+            }
+        }
+    }
 
     // App Lock Check
     if (BiometricAuthManager.isPinConfigured(profile.appPin) && !isAppUnlocked) {
         AppLockScreen(
-            businessName = profile.businessName.ifBlank { "My Business" },
+            businessName = profile.businessName.ifBlank { "Kirio Khata" },
             savedPin = profile.appPin,
             biometricEnabled = profile.biometricEnabled,
-            onUnlocked = { viewModel.unlockApp() }
+            onUnlocked = { viewModel.unlockApp() },
+            onMigrateLegacyPin = { hashed ->
+                viewModel.saveBusinessProfile(profile.copy(appPin = hashed))
+            }
         )
         return
     }
@@ -182,6 +232,10 @@ fun KirioMainApp(viewModel: KhataViewModel = viewModel()) {
             },
             onToggleGaveTick = { tx -> viewModel.toggleConfirmGave(tx) },
             onToggleTakenTick = { tx -> viewModel.toggleConfirmTaken(tx) },
+            onToggleCompleted = { tx -> viewModel.toggleCompleted(tx) },
+            onEditTransaction = { tx, amt, desc, time, mode, type, bill ->
+                viewModel.updateTransactionEntry(tx, amt, desc, time, mode, type, bill)
+            },
             onDeleteTransaction = { tx -> viewModel.deleteTransaction(tx) },
             onDeleteParty = { party ->
                 viewModel.deleteParty(party) {
@@ -463,6 +517,8 @@ fun KirioMainApp(viewModel: KhataViewModel = viewModel()) {
             syncStatusMessage = syncStatusMessage,
             onBackupNow = { viewModel.performCloudBackup() },
             onRestoreNow = { viewModel.performCloudRestore() },
+            onExportFile = { exportFileLauncher.launch("kirio_backup_${System.currentTimeMillis()}.json") },
+            onImportFile = { importFileLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
             onDismiss = { showCloudSyncDialog = false }
         )
     }

@@ -13,7 +13,7 @@ data class BusinessProfile(
     val address: String = "",
     val gstin: String = "",
     val upiId: String = "",
-    val category: String = "Retail & General Store",
+    val category: String = "Kids Wear Wholesale",
     val tagline: String = "Digital Khata & Store Ledger",
     val currencySymbol: String = "₹",
     val appPin: String = "",

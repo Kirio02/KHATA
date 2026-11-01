@@ -37,6 +37,7 @@ class KhataViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getDatabase(application)
     private val repository = KhataRepository(
+        database = database,
         businessProfileDao = database.businessProfileDao(),
         partyDao = database.partyDao(),
         transactionDao = database.transactionDao()
@@ -242,6 +243,35 @@ class KhataViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleCompleted(entry: TransactionEntry) {
+        viewModelScope.launch {
+            repository.updateTransaction(entry.copy(isCompleted = !entry.isCompleted))
+        }
+    }
+
+    fun updateTransactionEntry(
+        entry: TransactionEntry,
+        amount: Double,
+        description: String,
+        timestamp: Long,
+        paymentMode: PaymentMode,
+        type: TransactionType = entry.type,
+        billNumber: String = entry.billNumber
+    ) {
+        viewModelScope.launch {
+            repository.updateTransaction(
+                entry.copy(
+                    amount = amount,
+                    description = description.trim(),
+                    timestamp = timestamp,
+                    paymentMode = paymentMode,
+                    type = type,
+                    billNumber = billNumber.trim()
+                )
+            )
+        }
+    }
+
     fun deleteTransaction(entry: TransactionEntry) {
         viewModelScope.launch {
             repository.deleteTransaction(entry)
@@ -383,6 +413,31 @@ class KhataViewModel(application: Application) : AndroidViewModel(application) {
                 val (prof, parties, txs) = snapshot
                 repository.restoreFullSnapshot(prof, parties, txs)
                 val msg = "Restored ${parties.size} parties and ${txs.size} transactions!"
+                _syncStatusMessage.value = msg
+                onResult(true, msg)
+            }
+        }
+    }
+
+    fun getBackupJsonString(): String {
+        return syncRepository.createFullBackupJson(
+            profile = businessProfile.value,
+            parties = allParties.value,
+            transactions = allTransactions.value
+        )
+    }
+
+    fun restoreFromBackupJsonString(jsonString: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val snapshot = syncRepository.parseBackupJson(jsonString)
+            if (snapshot == null) {
+                val msg = "Invalid or corrupted backup file."
+                _syncStatusMessage.value = msg
+                onResult(false, msg)
+            } else {
+                val (prof, parties, txs) = snapshot
+                repository.restoreFullSnapshot(prof, parties, txs)
+                val msg = "Successfully restored ${parties.size} parties and ${txs.size} entries!"
                 _syncStatusMessage.value = msg
                 onResult(true, msg)
             }

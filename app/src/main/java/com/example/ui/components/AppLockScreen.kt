@@ -11,19 +11,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.example.util.BiometricAuthManager
 
 @Composable
@@ -46,11 +48,39 @@ fun AppLockScreen(
     businessName: String,
     savedPin: String,
     biometricEnabled: Boolean,
-    onUnlocked: () -> Unit
+    onUnlocked: () -> Unit,
+    onMigrateLegacyPin: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val canUseBio = remember(context, biometricEnabled) {
+        biometricEnabled && BiometricAuthManager.canAuthenticateWithBiometrics(context)
+    }
+
+    fun triggerBiometrics() {
+        if (activity != null && canUseBio) {
+            BiometricAuthManager.showBiometricPrompt(
+                activity = activity,
+                title = "Unlock Kirio Ledger",
+                subtitle = businessName.ifBlank { "Kirio Khata" },
+                onSuccess = onUnlocked,
+                onError = { err ->
+                    if (!err.contains("cancel", ignoreCase = true) && !err.contains("negative", ignoreCase = true)) {
+                        errorMessage = err
+                    }
+                }
+            )
+        }
+    }
+
+    LaunchedEffect(canUseBio) {
+        if (canUseBio) {
+            triggerBiometrics()
+        }
+    }
 
     fun appendDigit(digit: String) {
         if (enteredPin.length < 4) {
@@ -59,6 +89,11 @@ fun AppLockScreen(
             errorMessage = null
             if (updated.length == 4) {
                 if (BiometricAuthManager.verifyPin(updated, savedPin)) {
+                    // Migrate plain PIN to salted hash on first successful unlock
+                    if (BiometricAuthManager.isLegacyPlainPin(savedPin)) {
+                        val hashed = BiometricAuthManager.hashPin(updated)
+                        onMigrateLegacyPin?.invoke(hashed)
+                    }
                     onUnlocked()
                 } else {
                     errorMessage = "Incorrect 4-digit PIN. Please try again."
@@ -107,7 +142,7 @@ fun AppLockScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = businessName,
+                    text = businessName.ifBlank { "Kirio Khata" },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -186,16 +221,16 @@ fun AppLockScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (biometricEnabled) {
+                    if (canUseBio) {
                         FilledTonalIconButton(
-                            onClick = onUnlocked,
+                            onClick = { triggerBiometrics() },
                             modifier = Modifier
                                 .size(64.dp)
                                 .testTag("biometric_unlock_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Fingerprint,
-                                contentDescription = "Quick Biometric Unlock"
+                                contentDescription = "Biometric Unlock"
                             )
                         }
                     } else {

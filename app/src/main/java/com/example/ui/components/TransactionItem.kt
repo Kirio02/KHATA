@@ -1,9 +1,7 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,7 +22,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -36,9 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.TransactionEntry
 import com.example.data.model.TransactionType
 import com.example.ui.theme.CreditRed
-import com.example.ui.theme.CreditRedBg
 import com.example.ui.theme.DebitGreen
-import com.example.ui.theme.DebitGreenBg
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import java.text.NumberFormat
@@ -54,10 +50,12 @@ fun TransactionItem(
     runningBalance: Double? = null,
     onToggleGaveTick: (() -> Unit)? = null,
     onToggleTakenTick: (() -> Unit)? = null,
+    onToggleCompleted: (() -> Unit)? = null,
+    onEditClick: (() -> Unit)? = null,
     onDeleteClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val fmt = NumberFormat.getNumberInstance(Locale("en", "IN")).apply {
+    val fmt = NumberFormat.getNumberInstance(Locale.Builder().setLanguage("en").setRegion("IN").build()).apply {
         maximumFractionDigits = 0
     }
     val dateFormat = SimpleDateFormat("dd MMM yy • hh:mm a", Locale.getDefault())
@@ -71,6 +69,7 @@ fun TransactionItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
             .fillMaxWidth()
+            .clickable(enabled = onEditClick != null) { onEditClick?.invoke() }
             .testTag("transaction_item_${entry.id}")
     ) {
         Column(
@@ -78,7 +77,7 @@ fun TransactionItem(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            // Main Transaction Row (2-column ledger table layout like user's photo)
+            // Main Transaction Row (2-column ledger table layout)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top
@@ -130,7 +129,7 @@ fun TransactionItem(
                     }
                 }
 
-                // Middle / Right Columns: YOU GAVE & YOU GOT
+                // Middle / Right Columns: YOU GAVE & YOU GOT & Action buttons
                 Row(
                     modifier = Modifier.weight(1.3f),
                     horizontalArrangement = Arrangement.End,
@@ -174,10 +173,24 @@ fun TransactionItem(
                         }
                     }
 
+                    if (onEditClick != null) {
+                        IconButton(
+                            onClick = onEditClick,
+                            modifier = Modifier.size(32.dp).testTag("edit_tx_button_${entry.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Entry",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
                     if (onDeleteClick != null) {
                         IconButton(
                             onClick = onDeleteClick,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(32.dp).testTag("delete_tx_button_${entry.id}")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
@@ -194,7 +207,7 @@ fun TransactionItem(
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(6.dp))
 
-            // User Requirement #3: Manual Ticks for Payment GIVEN / TAKEN in 1 section
+            // Confirmation Ticks Row: Gave / Taken / Completed
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -214,9 +227,9 @@ fun TransactionItem(
                         tint = if (entry.isConfirmedGave) CreditRed else Color.Gray,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (entry.isConfirmedGave) "Gave: Done ✓" else "Tick if Gave",
+                        text = if (entry.isConfirmedGave) "Gave: Done ✓" else "Tick Gave",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (entry.isConfirmedGave) FontWeight.Bold else FontWeight.Normal,
                         color = if (entry.isConfirmedGave) CreditRed else TextSecondary
@@ -237,12 +250,35 @@ fun TransactionItem(
                         tint = if (entry.isConfirmedTaken) DebitGreen else Color.Gray,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (entry.isConfirmedTaken) "Taken: Done ✓" else "Tick if Taken",
+                        text = if (entry.isConfirmedTaken) "Taken: Done ✓" else "Tick Taken",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (entry.isConfirmedTaken) FontWeight.Bold else FontWeight.Normal,
                         color = if (entry.isConfirmedTaken) DebitGreen else TextSecondary
+                    )
+                }
+
+                // Completed Tick
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(enabled = onToggleCompleted != null) { onToggleCompleted?.invoke() }
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (entry.isCompleted) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircleOutline,
+                        contentDescription = "Completed",
+                        tint = if (entry.isCompleted) Color(0xFF1565C0) else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (entry.isCompleted) "Completed ✓" else "Tick Done",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (entry.isCompleted) FontWeight.Bold else FontWeight.Normal,
+                        color = if (entry.isCompleted) Color(0xFF1565C0) else TextSecondary
                     )
                 }
             }

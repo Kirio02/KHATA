@@ -43,6 +43,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.example.util.BiometricAuthManager
+import com.example.util.Localization
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,6 +64,7 @@ fun ProfileSettingsScreen(
     onOpenAppGuide: () -> Unit = {}
 ) {
     var businessName by remember(profile) { mutableStateOf(profile.businessName) }
+    val strings = remember(profile.languageCode) { Localization.getStrings(profile.languageCode) }
     var ownerName by remember(profile) { mutableStateOf(profile.ownerName) }
     var phone by remember(profile) { mutableStateOf(profile.phone) }
     var email by remember(profile) { mutableStateOf(profile.email) }
@@ -69,7 +72,7 @@ fun ProfileSettingsScreen(
     var gstin by remember(profile) { mutableStateOf(profile.gstin) }
     var upiId by remember(profile) { mutableStateOf(profile.upiId) }
     var tagline by remember(profile) { mutableStateOf(profile.tagline) }
-    var appPin by remember(profile) { mutableStateOf(profile.appPin) }
+    var appPin by remember(profile) { mutableStateOf(if (BiometricAuthManager.isPinConfigured(profile.appPin)) "••••" else "") }
     var biometricEnabled by remember(profile) { mutableStateOf(profile.biometricEnabled) }
     var savedBanner by remember { mutableStateOf(false) }
 
@@ -207,6 +210,11 @@ fun ProfileSettingsScreen(
 
                     Button(
                         onClick = {
+                            val pinToSave = when {
+                                appPin.length == 4 && appPin.all { it.isDigit() } -> BiometricAuthManager.hashPin(appPin)
+                                appPin.isBlank() -> ""
+                                else -> profile.appPin
+                            }
                             onSaveProfile(
                                 profile.copy(
                                     businessName = businessName.trim(),
@@ -217,7 +225,7 @@ fun ProfileSettingsScreen(
                                     gstin = gstin.trim(),
                                     upiId = upiId.trim(),
                                     tagline = tagline.trim(),
-                                    appPin = appPin.trim(),
+                                    appPin = pinToSave,
                                     biometricEnabled = biometricEnabled,
                                     hasCompletedOnboarding = true
                                 )
@@ -291,12 +299,12 @@ fun ProfileSettingsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CloudSync,
-                                contentDescription = "Cloud Sync",
+                                imageVector = Icons.Default.Save,
+                                contentDescription = strings.backupFile,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Backup / Sync")
+                            Text(strings.backupFile)
                         }
                         FilledTonalButton(
                             onClick = onOpenImportCsv,
@@ -370,7 +378,7 @@ fun ProfileSettingsScreen(
                                 savedBanner = false
                             }
                         },
-                        label = { Text("4-Digit App Lock PIN (Optional)") },
+                        label = { Text(if (BiometricAuthManager.isPinConfigured(profile.appPin)) "PIN Set (Enter 4 digits to change)" else "4-Digit App Lock PIN (Optional)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         singleLine = true,
                         modifier = Modifier
@@ -396,7 +404,7 @@ fun ProfileSettingsScreen(
                         )
                     }
 
-                    if (appPin.length == 4) {
+                    if (BiometricAuthManager.isPinConfigured(profile.appPin) || (appPin.length == 4 && appPin.all { it.isDigit() })) {
                         FilledTonalButton(
                             onClick = onLockAppNow,
                             modifier = Modifier.fillMaxWidth()

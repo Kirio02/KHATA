@@ -8,15 +8,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.BusinessProfile
+import com.example.util.Localization
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -41,8 +48,11 @@ fun CloudSyncDialog(
     syncStatusMessage: String?,
     onBackupNow: () -> Unit,
     onRestoreNow: () -> Unit,
+    onExportFile: () -> Unit,
+    onImportFile: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val strings = remember(profile.languageCode) { Localization.getStrings(profile.languageCode) }
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
     var localFeedback by remember { mutableStateOf<String?>(null) }
 
@@ -51,29 +61,32 @@ fun CloudSyncDialog(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.CloudDone,
-                    contentDescription = "Backup",
+                    imageVector = Icons.Default.Save,
+                    contentDescription = strings.backupFile,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(26.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Ledger Backup & Restore",
+                    text = strings.backupFile,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    text = "Safeguard your Kirio ledger with instant encrypted snapshot backup.",
+                    text = "Export your ledger to a file on your device (survives uninstall) or save a quick snapshot.",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
                 Text(
-                    text = "• Active Parties: $partiesCount\n• Total Entries: $transactionsCount\n• Last Synced: ${
-                        profile.lastSyncedAt?.let { dateFormat.format(Date(it)) } ?: "Never backed up"
+                    text = "• Active Parties: $partiesCount\n• Total Entries: $transactionsCount\n• Last Saved: ${
+                        profile.lastSyncedAt?.let { dateFormat.format(Date(it)) } ?: "Never"
                     }",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -91,27 +104,51 @@ fun CloudSyncDialog(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
+                // File Export Button (Primary document export)
                 Button(
-                    onClick = {
-                        onBackupNow()
-                        localFeedback = "Snapshot saved!"
-                    },
+                    onClick = onExportFile,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(imageVector = Icons.Default.CloudUpload, contentDescription = "Backup")
+                    Icon(imageVector = Icons.Default.FileUpload, contentDescription = strings.exportBackup)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Backup All Data Now")
+                    Text(strings.exportBackup, fontWeight = FontWeight.Bold)
                 }
 
+                // File Import Button (Open file from device)
                 FilledTonalButton(
-                    onClick = {
-                        onRestoreNow()
-                    },
+                    onClick = onImportFile,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(imageVector = Icons.Default.CloudDownload, contentDescription = "Restore")
+                    Icon(imageVector = Icons.Default.FileDownload, contentDescription = strings.importBackup)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Restore from Last Snapshot")
+                    Text(strings.importBackup, fontWeight = FontWeight.SemiBold)
+                }
+
+                HorizontalDivider(modifier = Modifier.height(8.dp))
+
+                // Internal Snapshot actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            onBackupNow()
+                            localFeedback = "Snapshot saved!"
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Save Snapshot")
+                    }
+
+                    OutlinedButton(
+                        onClick = onRestoreNow,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(imageVector = Icons.Default.SettingsBackupRestore, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Restore Snapshot")
+                    }
                 }
             }
         },

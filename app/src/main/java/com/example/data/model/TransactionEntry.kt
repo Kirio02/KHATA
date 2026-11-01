@@ -46,5 +46,7 @@ data class TransactionEntry(
     val itemsSummary: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val isConfirmedGave: Boolean = false,
-    val isConfirmedTaken: Boolean = false
+    val isConfirmedTaken: Boolean = false,
+    val linkedToEntryId: Long? = null,
+    val isCompleted: Boolean = false
 )

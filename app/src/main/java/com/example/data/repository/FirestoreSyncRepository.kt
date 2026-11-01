@@ -24,7 +24,175 @@ data class SyncSnapshotResult(
 class FirestoreSyncRepository(private val context: Context) {
 
     private val backupFile: File
-        get() = File(context.filesDir, "kirio_cloud_sync_snapshot.json")
+        get() = File(context.filesDir, "kirio_local_backup_snapshot.json")
+
+    companion object {
+        fun createFullBackupJson(
+            profile: BusinessProfile,
+            parties: List<Party>,
+            transactions: List<TransactionEntry>
+        ): String {
+        val root = JSONObject()
+        val now = System.currentTimeMillis()
+        root.put("app", "Kirio Digital Khata")
+        root.put("version", 2)
+        root.put("syncedAt", now)
+
+        val profileJson = JSONObject().apply {
+            put("businessName", profile.businessName)
+            put("ownerName", profile.ownerName)
+            put("phone", profile.phone)
+            put("email", profile.email)
+            put("address", profile.address)
+            put("gstin", profile.gstin)
+            put("upiId", profile.upiId)
+            put("category", profile.category)
+            put("tagline", profile.tagline)
+            put("currencySymbol", profile.currencySymbol)
+            put("biometricEnabled", profile.biometricEnabled)
+            put("languageCode", profile.languageCode)
+            put("hasCompletedOnboarding", profile.hasCompletedOnboarding)
+            if (profile.lastSyncedAt != null) put("lastSyncedAt", profile.lastSyncedAt)
+            // Notice: appPin is explicitly excluded for security
+        }
+        root.put("profile", profileJson)
+
+        val partiesArray = JSONArray()
+        parties.forEach { p ->
+            partiesArray.put(
+                JSONObject().apply {
+                    put("id", p.id)
+                    put("name", p.name)
+                    put("phone", p.phone)
+                    put("type", p.type.name)
+                    put("address", p.address)
+                    put("gstin", p.gstin)
+                    put("notes", p.notes)
+                    put("balance", p.balance)
+                    if (p.dueDateTimestamp != null) put("dueDateTimestamp", p.dueDateTimestamp)
+                    put("createdAt", p.createdAt)
+                    put("updatedAt", p.updatedAt)
+                }
+            )
+        }
+        root.put("parties", partiesArray)
+
+        val txArray = JSONArray()
+        transactions.forEach { t ->
+            txArray.put(
+                JSONObject().apply {
+                    put("id", t.id)
+                    if (t.partyId != null) put("partyId", t.partyId)
+                    put("partyNameSnapshot", t.partyNameSnapshot)
+                    put("amount", t.amount)
+                    put("type", t.type.name)
+                    put("paymentMode", t.paymentMode.name)
+                    put("description", t.description)
+                    put("billNumber", t.billNumber)
+                    put("itemsSummary", t.itemsSummary)
+                    put("timestamp", t.timestamp)
+                    put("isConfirmedGave", t.isConfirmedGave)
+                    put("isConfirmedTaken", t.isConfirmedTaken)
+                    if (t.linkedToEntryId != null) put("linkedToEntryId", t.linkedToEntryId)
+                    put("isCompleted", t.isCompleted)
+                }
+            )
+        }
+        root.put("transactions", txArray)
+
+        return root.toString(2)
+    }
+
+    fun parseBackupJson(jsonString: String): Triple<BusinessProfile?, List<Party>, List<TransactionEntry>>? {
+        return try {
+            val root = JSONObject(jsonString)
+            val syncedAt = root.optLong("syncedAt", System.currentTimeMillis())
+
+            val pObj = root.optJSONObject("profile")
+            val profile = pObj?.let {
+                BusinessProfile(
+                    id = 1,
+                    businessName = it.optString("businessName", "My Kirio Store"),
+                    ownerName = it.optString("ownerName", ""),
+                    phone = it.optString("phone", ""),
+                    email = it.optString("email", ""),
+                    address = it.optString("address", ""),
+                    gstin = it.optString("gstin", ""),
+                    upiId = it.optString("upiId", ""),
+                    category = it.optString("category", "Kids Wear Wholesale"),
+                    tagline = it.optString("tagline", "Trusted Digital Khata & Store"),
+                    currencySymbol = it.optString("currencySymbol", "₹"),
+                    biometricEnabled = it.optBoolean("biometricEnabled", false),
+                    languageCode = it.optString("languageCode", "en"),
+                    hasCompletedOnboarding = it.optBoolean("hasCompletedOnboarding", true),
+                    lastSyncedAt = syncedAt
+                )
+            }
+
+            val parties = mutableListOf<Party>()
+            val partiesArr = root.optJSONArray("parties") ?: JSONArray()
+            for (i in 0 until partiesArr.length()) {
+                val item = partiesArr.getJSONObject(i)
+                parties.add(
+                    Party(
+                        id = item.optLong("id", 0L),
+                        name = item.optString("name", "Party"),
+                        phone = item.optString("phone", ""),
+                        type = runCatching { PartyType.valueOf(item.optString("type")) }
+                            .getOrDefault(PartyType.CUSTOMER),
+                        address = item.optString("address", ""),
+                        gstin = item.optString("gstin", ""),
+                        notes = item.optString("notes", ""),
+                        balance = item.optDouble("balance", 0.0),
+                        dueDateTimestamp = if (item.has("dueDateTimestamp")) item.optLong("dueDateTimestamp") else null,
+                        createdAt = item.optLong("createdAt", System.currentTimeMillis()),
+                        updatedAt = item.optLong("updatedAt", System.currentTimeMillis())
+                    )
+                )
+            }
+
+            val transactions = mutableListOf<TransactionEntry>()
+            val txArr = root.optJSONArray("transactions") ?: JSONArray()
+            for (i in 0 until txArr.length()) {
+                val item = txArr.getJSONObject(i)
+                transactions.add(
+                    TransactionEntry(
+                        id = item.optLong("id", 0L),
+                        partyId = if (item.has("partyId")) item.optLong("partyId") else null,
+                        partyNameSnapshot = item.optString("partyNameSnapshot", ""),
+                        amount = item.optDouble("amount", 0.0),
+                        type = runCatching { TransactionType.valueOf(item.optString("type")) }
+                            .getOrDefault(TransactionType.YOU_GAVE),
+                        paymentMode = runCatching { PaymentMode.valueOf(item.optString("paymentMode")) }
+                            .getOrDefault(PaymentMode.CASH),
+                        description = item.optString("description", ""),
+                        billNumber = item.optString("billNumber", ""),
+                        itemsSummary = item.optString("itemsSummary", ""),
+                        timestamp = item.optLong("timestamp", System.currentTimeMillis()),
+                        isConfirmedGave = item.optBoolean("isConfirmedGave", false),
+                        isConfirmedTaken = item.optBoolean("isConfirmedTaken", false),
+                        linkedToEntryId = if (item.has("linkedToEntryId")) item.optLong("linkedToEntryId") else null,
+                        isCompleted = item.optBoolean("isCompleted", false)
+                    )
+                )
+            }
+
+            Triple(profile, parties, transactions)
+        } catch (e: Exception) {
+            null
+        }
+    }
+    }
+
+
+    fun createFullBackupJson(
+        profile: BusinessProfile,
+        parties: List<Party>,
+        transactions: List<TransactionEntry>
+    ): String = Companion.createFullBackupJson(profile, parties, transactions)
+
+    fun parseBackupJson(jsonString: String): Triple<BusinessProfile?, List<Party>, List<TransactionEntry>>? =
+        Companion.parseBackupJson(jsonString)
 
     suspend fun backupToCloud(
         profile: BusinessProfile,
@@ -32,71 +200,15 @@ class FirestoreSyncRepository(private val context: Context) {
         transactions: List<TransactionEntry>
     ): SyncSnapshotResult = withContext(Dispatchers.IO) {
         try {
-            val root = JSONObject()
-            val now = System.currentTimeMillis()
-            root.put("syncedAt", now)
-
-            val profileJson = JSONObject().apply {
-                put("businessName", profile.businessName)
-                put("ownerName", profile.ownerName)
-                put("phone", profile.phone)
-                put("email", profile.email)
-                put("address", profile.address)
-                put("gstin", profile.gstin)
-                put("upiId", profile.upiId)
-                put("category", profile.category)
-                put("tagline", profile.tagline)
-                put("currencySymbol", profile.currencySymbol)
-            }
-            root.put("profile", profileJson)
-
-            val partiesArray = JSONArray()
-            parties.forEach { p ->
-                partiesArray.put(
-                    JSONObject().apply {
-                        put("id", p.id)
-                        put("name", p.name)
-                        put("phone", p.phone)
-                        put("type", p.type.name)
-                        put("address", p.address)
-                        put("gstin", p.gstin)
-                        put("notes", p.notes)
-                        put("balance", p.balance)
-                        if (p.dueDateTimestamp != null) put("dueDateTimestamp", p.dueDateTimestamp)
-                        put("createdAt", p.createdAt)
-                        put("updatedAt", p.updatedAt)
-                    }
-                )
-            }
-            root.put("parties", partiesArray)
-
-            val txArray = JSONArray()
-            transactions.forEach { t ->
-                txArray.put(
-                    JSONObject().apply {
-                        put("id", t.id)
-                        if (t.partyId != null) put("partyId", t.partyId)
-                        put("partyNameSnapshot", t.partyNameSnapshot)
-                        put("amount", t.amount)
-                        put("type", t.type.name)
-                        put("paymentMode", t.paymentMode.name)
-                        put("description", t.description)
-                        put("billNumber", t.billNumber)
-                        put("itemsSummary", t.itemsSummary)
-                        put("timestamp", t.timestamp)
-                    }
-                )
-            }
-            root.put("transactions", txArray)
-
-            backupFile.writeText(root.toString(2))
+            val json = createFullBackupJson(profile, parties, transactions)
+            backupFile.writeText(json)
 
             SyncSnapshotResult(
                 success = true,
-                message = "Successfully backed up ${parties.size} parties and ${transactions.size} transactions.",
+                message = "Successfully created backup file (${parties.size} parties, ${transactions.size} entries).",
                 partiesCount = parties.size,
                 transactionsCount = transactions.size,
-                syncedTimestamp = now
+                syncedTimestamp = System.currentTimeMillis()
             )
         } catch (e: Exception) {
             SyncSnapshotResult(
@@ -110,90 +222,11 @@ class FirestoreSyncRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             if (!backupFile.exists()) return@withContext null
             try {
-                val root = JSONObject(backupFile.readText())
-                val syncedAt = root.optLong("syncedAt", System.currentTimeMillis())
-
-                val pObj = root.optJSONObject("profile")
-                val profile = pObj?.let {
-                    BusinessProfile(
-                        id = 1,
-                        businessName = it.optString("businessName", "My Kirio Store"),
-                        ownerName = it.optString("ownerName", ""),
-                        phone = it.optString("phone", ""),
-                        email = it.optString("email", ""),
-                        address = it.optString("address", ""),
-                        gstin = it.optString("gstin", ""),
-                        upiId = it.optString("upiId", ""),
-                        category = it.optString("category", "Retail & General Store"),
-                        tagline = it.optString("tagline", "Trusted Digital Khata & Store"),
-                        currencySymbol = it.optString("currencySymbol", "₹"),
-                        lastSyncedAt = syncedAt
-                    )
-                }
-
-                val parties = mutableListOf<Party>()
-                val partiesArr = root.optJSONArray("parties") ?: JSONArray()
-                for (i in 0 until partiesArr.length()) {
-                    val item = partiesArr.getJSONObject(i)
-                    parties.add(
-                        Party(
-                            id = item.optLong("id", 0L),
-                            name = item.optString("name", "Party"),
-                            phone = item.optString("phone", ""),
-                            type = runCatching { PartyType.valueOf(item.optString("type")) }
-                                .getOrDefault(PartyType.CUSTOMER),
-                            address = item.optString("address", ""),
-                            gstin = item.optString("gstin", ""),
-                            notes = item.optString("notes", ""),
-                            balance = item.optDouble("balance", 0.0),
-                            dueDateTimestamp = if (item.has("dueDateTimestamp")) item.optLong("dueDateTimestamp") else null,
-                            createdAt = item.optLong("createdAt", System.currentTimeMillis()),
-                            updatedAt = item.optLong("updatedAt", System.currentTimeMillis())
-                        )
-                    )
-                }
-
-                val transactions = mutableListOf<TransactionEntry>()
-                val txArr = root.optJSONArray("transactions") ?: JSONArray()
-                for (i in 0 until txArr.length()) {
-                    val item = txArr.getJSONObject(i)
-                    transactions.add(
-                        TransactionEntry(
-                            id = item.optLong("id", 0L),
-                            partyId = if (item.has("partyId")) item.optLong("partyId") else null,
-                            partyNameSnapshot = item.optString("partyNameSnapshot", ""),
-                            amount = item.optDouble("amount", 0.0),
-                            type = runCatching { TransactionType.valueOf(item.optString("type")) }
-                                .getOrDefault(TransactionType.YOU_GAVE),
-                            paymentMode = runCatching { PaymentMode.valueOf(item.optString("paymentMode")) }
-                                .getOrDefault(PaymentMode.CASH),
-                            description = item.optString("description", ""),
-                            billNumber = item.optString("billNumber", ""),
-                            itemsSummary = item.optString("itemsSummary", ""),
-                            timestamp = item.optLong("timestamp", System.currentTimeMillis())
-                        )
-                    )
-                }
-
-                Triple(profile, parties, transactions)
+                parseBackupJson(backupFile.readText())
             } catch (e: Exception) {
                 null
             }
         }
-
-    fun exportBackupJson(
-        profile: BusinessProfile,
-        parties: List<Party>,
-        transactions: List<TransactionEntry>
-    ): String {
-        val root = JSONObject()
-        root.put("app", "Kirio Digital Khata")
-        root.put("exportedAt", System.currentTimeMillis())
-        root.put("businessName", profile.businessName)
-        root.put("partiesCount", parties.size)
-        root.put("transactionsCount", transactions.size)
-        return root.toString(2)
-    }
 
     fun hasSavedSnapshot(): Boolean = backupFile.exists()
 }

@@ -61,8 +61,10 @@ import com.example.data.model.Party
 import com.example.data.model.PaymentMode
 import com.example.data.model.TransactionEntry
 import com.example.data.model.TransactionType
+import com.example.data.repository.computeRunningBalances
 import com.example.ui.components.TransactionItem
 import com.example.ui.dialogs.AddTransactionDialog
+import com.example.ui.dialogs.EditTransactionDialog
 import com.example.ui.theme.CreditRed
 import com.example.ui.theme.DebitGreen
 import com.example.ui.theme.PrimaryNavy
@@ -89,6 +91,8 @@ fun PartyDetailScreen(
     ) -> Unit,
     onToggleGaveTick: (TransactionEntry) -> Unit,
     onToggleTakenTick: (TransactionEntry) -> Unit,
+    onToggleCompleted: ((TransactionEntry) -> Unit)? = null,
+    onEditTransaction: ((TransactionEntry, Double, String, Long, PaymentMode, TransactionType, String) -> Unit)? = null,
     onDeleteTransaction: (TransactionEntry) -> Unit,
     onDeleteParty: (Party) -> Unit,
     onSendReminder: (Party) -> Unit
@@ -97,9 +101,11 @@ fun PartyDetailScreen(
 
     val context = LocalContext.current
     val currency = profile.currencySymbol.ifBlank { "₹" }
-    val fmt = NumberFormat.getNumberInstance(Locale("en", "IN")).apply { maximumFractionDigits = 0 }
+    val fmt = NumberFormat.getNumberInstance(Locale.Builder().setLanguage("en").setRegion("IN").build()).apply { maximumFractionDigits = 0 }
 
     var showTxDialogType by remember { mutableStateOf<TransactionType?>(null) }
+    var editingEntry by remember { mutableStateOf<TransactionEntry?>(null) }
+    val runningBalances = remember(transactions) { computeRunningBalances(transactions) }
 
     val isReceivable = party.balance > 0.0
     val isPayable = party.balance < 0.0
@@ -495,9 +501,11 @@ fun PartyDetailScreen(
                             entry = entry,
                             currencySymbol = currency,
                             showPartyName = false,
-                            runningBalance = party.balance,
+                            runningBalance = runningBalances[entry.id],
                             onToggleGaveTick = { onToggleGaveTick(entry) },
                             onToggleTakenTick = { onToggleTakenTick(entry) },
+                            onToggleCompleted = { onToggleCompleted?.invoke(entry) },
+                            onEditClick = { editingEntry = entry },
                             onDeleteClick = { onDeleteTransaction(entry) },
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
@@ -516,6 +524,19 @@ fun PartyDetailScreen(
             onSave = { amt, type, mode, desc, bill ->
                 onAddTransaction(amt, type, mode, desc, bill)
                 showTxDialogType = null
+            }
+        )
+    }
+
+    if (editingEntry != null) {
+        EditTransactionDialog(
+            entry = editingEntry!!,
+            currencySymbol = currency,
+            languageCode = profile.languageCode,
+            onDismiss = { editingEntry = null },
+            onSave = { amt, desc, time, mode, type, bill ->
+                onEditTransaction?.invoke(editingEntry!!, amt, desc, time, mode, type, bill)
+                editingEntry = null
             }
         )
     }

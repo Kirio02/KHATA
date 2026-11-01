@@ -1,8 +1,10 @@
 package com.example.data.repository
 
+import androidx.room.withTransaction
 import com.example.data.dao.BusinessProfileDao
 import com.example.data.dao.PartyDao
 import com.example.data.dao.TransactionDao
+import com.example.data.db.AppDatabase
 import com.example.data.model.BusinessProfile
 import com.example.data.model.Party
 import com.example.data.model.PartyType
@@ -11,7 +13,29 @@ import com.example.data.model.TransactionEntry
 import com.example.data.model.TransactionType
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Pure function to compute the running balance for each transaction of a party.
+ * Sorts entries oldest -> newest by timestamp and id, accumulates:
+ * YOU_GAVE adds (debit/credit given), YOU_GOT subtracts (payment received).
+ * Returns a map from transaction id to running balance after that transaction.
+ */
+fun computeRunningBalances(entries: List<TransactionEntry>): Map<Long, Double> {
+    val sorted = entries.sortedWith(compareBy({ it.timestamp }, { it.id }))
+    val balances = mutableMapOf<Long, Double>()
+    var running = 0.0
+    for (entry in sorted) {
+        when (entry.type) {
+            TransactionType.YOU_GAVE -> running += entry.amount
+            TransactionType.YOU_GOT -> running -= entry.amount
+            else -> {}
+        }
+        balances[entry.id] = running
+    }
+    return balances
+}
+
 class KhataRepository(
+    private val database: AppDatabase,
     private val businessProfileDao: BusinessProfileDao,
     private val partyDao: PartyDao,
     private val transactionDao: TransactionDao
@@ -39,174 +63,13 @@ class KhataRepository(
                     address = "",
                     gstin = "",
                     upiId = "",
-                    category = "Retail & Wholesale Store",
+                    category = "Kids Wear Wholesale",
                     tagline = "Digital Khata & Store Ledger",
                     hasCompletedOnboarding = false
                 )
             )
         }
-
-        val existingParties = partyDao.getAllPartiesOnce()
-        if (existingParties.isEmpty()) {
-            val now = System.currentTimeMillis()
-            val dayMs = 86_400_000L
-
-            val p1Id = partyDao.insertParty(
-                Party(
-                    name = "Aarav General Store",
-                    phone = "9820112233",
-                    type = PartyType.CUSTOMER,
-                    address = "Indiranagar 100ft Rd",
-                    notes = "Monthly wholesale grocery buyer",
-                    balance = 4250.0,
-                    dueDateTimestamp = now + (3 * dayMs),
-                    createdAt = now - (14 * dayMs),
-                    updatedAt = now - (1 * dayMs)
-                )
-            )
-
-            val p2Id = partyDao.insertParty(
-                Party(
-                    name = "Meera Textiles & Mart",
-                    phone = "9845098450",
-                    type = PartyType.CUSTOMER,
-                    address = "Jayanagar 4th Block",
-                    notes = "Prefers UPI payment on 5th",
-                    balance = 1800.0,
-                    dueDateTimestamp = now + (5 * dayMs),
-                    createdAt = now - (10 * dayMs),
-                    updatedAt = now - (2 * dayMs)
-                )
-            )
-
-            val p3Id = partyDao.insertParty(
-                Party(
-                    name = "Sri Balaji Agro Distributors",
-                    phone = "9900112244",
-                    type = PartyType.SUPPLIER,
-                    address = "APMC Yard, Yeshwanthpur",
-                    gstin = "29BALAJ9988K1Z2",
-                    notes = "Main rice & oil supplier",
-                    balance = -6400.0,
-                    dueDateTimestamp = now + (7 * dayMs),
-                    createdAt = now - (20 * dayMs),
-                    updatedAt = now - (1 * dayMs)
-                )
-            )
-
-            val p4Id = partyDao.insertParty(
-                Party(
-                    name = "Vikram Cafe & Bakery",
-                    phone = "9731223344",
-                    type = PartyType.CUSTOMER,
-                    address = "Koramangala 5th Block",
-                    notes = "Daily dairy & flour supply",
-                    balance = 950.0,
-                    createdAt = now - (8 * dayMs),
-                    updatedAt = now - (12 * 3600_000L)
-                )
-            )
-
-            // Seed sample transactions
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = p1Id,
-                    partyNameSnapshot = "Aarav General Store",
-                    amount = 6250.0,
-                    type = TransactionType.YOU_GAVE,
-                    paymentMode = PaymentMode.CASH,
-                    description = "25kg Basmati Rice + Refined Oil Cartons",
-                    billNumber = "INV-1041",
-                    timestamp = now - (4 * dayMs)
-                )
-            )
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = p1Id,
-                    partyNameSnapshot = "Aarav General Store",
-                    amount = 2000.0,
-                    type = TransactionType.YOU_GOT,
-                    paymentMode = PaymentMode.UPI,
-                    description = "Part payment received via PhonePe",
-                    billNumber = "REC-208",
-                    timestamp = now - (1 * dayMs)
-                )
-            )
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = p2Id,
-                    partyNameSnapshot = "Meera Textiles & Mart",
-                    amount = 1800.0,
-                    type = TransactionType.YOU_GAVE,
-                    paymentMode = PaymentMode.UPI,
-                    description = "Pantry supplies & packaging rolls",
-                    billNumber = "INV-1045",
-                    timestamp = now - (2 * dayMs)
-                )
-            )
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = p3Id,
-                    partyNameSnapshot = "Sri Balaji Agro Distributors",
-                    amount = 6400.0,
-                    type = TransactionType.YOU_GOT,
-                    paymentMode = PaymentMode.BANK_TRANSFER,
-                    description = "Wholesale stock purchase on credit",
-                    billNumber = "PUR-882",
-                    timestamp = now - (3 * dayMs)
-                )
-            )
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = p4Id,
-                    partyNameSnapshot = "Vikram Cafe & Bakery",
-                    amount = 950.0,
-                    type = TransactionType.YOU_GAVE,
-                    paymentMode = PaymentMode.CASH,
-                    description = "Maida 20kg + Sugar 10kg",
-                    billNumber = "INV-1049",
-                    timestamp = now - (12 * 3600_000L)
-                )
-            )
-
-            // Cashbook entries
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = null,
-                    partyNameSnapshot = "Walk-in Counter Sales",
-                    amount = 3450.0,
-                    type = TransactionType.CASH_IN,
-                    paymentMode = PaymentMode.CASH,
-                    description = "Morning counter retail sales",
-                    billNumber = "CSH-01",
-                    timestamp = now - (18 * 3600_000L)
-                )
-            )
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = null,
-                    partyNameSnapshot = "UPI QR Counter Collection",
-                    amount = 2180.0,
-                    type = TransactionType.CASH_IN,
-                    paymentMode = PaymentMode.UPI,
-                    description = "QR Standee instant payments",
-                    billNumber = "CSH-02",
-                    timestamp = now - (8 * 3600_000L)
-                )
-            )
-            transactionDao.insertTransaction(
-                TransactionEntry(
-                    partyId = null,
-                    partyNameSnapshot = "Store Electricity & Delivery Fuel",
-                    amount = 680.0,
-                    type = TransactionType.CASH_OUT,
-                    paymentMode = PaymentMode.CASH,
-                    description = "Delivery van fuel & tea expense",
-                    billNumber = "EXP-12",
-                    timestamp = now - (5 * 3600_000L)
-                )
-            )
-        }
+        // Demo data removed: fresh install starts with completely empty parties and transactions
     }
 
     suspend fun saveBusinessProfile(profile: BusinessProfile) {
@@ -279,7 +142,9 @@ class KhataRepository(
         description: String,
         billNumber: String = "",
         itemsSummary: String = "",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        linkedToEntryId: Long? = null,
+        isCompleted: Boolean = false
     ) {
         val party = partyDao.getPartyByIdOnce(partyId) ?: return
         transactionDao.insertTransaction(
@@ -292,7 +157,9 @@ class KhataRepository(
                 description = description.trim(),
                 billNumber = billNumber.trim(),
                 itemsSummary = itemsSummary.trim(),
-                timestamp = timestamp
+                timestamp = timestamp,
+                linkedToEntryId = linkedToEntryId,
+                isCompleted = isCompleted
             )
         )
         recalculatePartyBalance(partyId)
@@ -323,6 +190,7 @@ class KhataRepository(
 
     suspend fun updateTransaction(entry: TransactionEntry) {
         transactionDao.updateTransaction(entry)
+        entry.partyId?.let { recalculatePartyBalance(it) }
     }
 
     suspend fun deleteTransaction(entry: TransactionEntry) {
@@ -364,10 +232,23 @@ class KhataRepository(
         parties: List<Party>,
         transactions: List<TransactionEntry>
     ) {
-        profile?.let { businessProfileDao.saveProfile(it.copy(id = 1)) }
-        transactionDao.deleteAllTransactions()
-        partyDao.deleteAllParties()
-        parties.forEach { partyDao.insertParty(it) }
-        transactions.forEach { transactionDao.insertTransaction(it) }
+        database.withTransaction {
+            profile?.let {
+                val current = businessProfileDao.getProfileOnce()
+                val currentPin = current?.appPin.orEmpty()
+                val currentBio = current?.biometricEnabled ?: false
+                businessProfileDao.saveProfile(
+                    it.copy(
+                        id = 1,
+                        appPin = currentPin,
+                        biometricEnabled = currentBio
+                    )
+                )
+            }
+            transactionDao.deleteAllTransactions()
+            partyDao.deleteAllParties()
+            parties.forEach { partyDao.insertParty(it) }
+            transactions.forEach { transactionDao.insertTransaction(it) }
+        }
     }
 }
